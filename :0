@@ -1,0 +1,186 @@
+import pygame
+import random
+import time  
+
+
+
+pygame.init()
+
+# Set up the display
+width, height = 1450, 500
+screen = pygame.display.set_mode((width, height))
+pygame.display.set_caption("Mouse Dodging Game with Lives and Flying Blocks")
+
+
+black = (0, 0, 0)
+red = (255, 0, 0)
+white = (255, 255, 255)
+blue = (0, 0, 255)  
+
+# Function to generate all light colors
+def generate_light_colors():
+    colors = []
+    for r in range(200, 256):
+        for g in range(200, 256):
+            for b in range(200, 256):
+                colors.append((r, g, b))
+    return colors
+
+# Generate light colors and select 2% of them
+all_light_colors = generate_light_colors()
+light_color_count = len(all_light_colors)
+selected_light_colors = random.sample(all_light_colors, max(1, light_color_count // 50))  # Select 2% (1/50)
+
+
+walls = []
+flying_blocks = []  
+wall_width = 20
+wall_speed = 5
+wall_frequency = 100  # frames before a new wall appears
+level = 1
+lives = 4  # Starting lives
+score = 0  # Initialize score
+clock = pygame.time.Clock()
+
+# Function to spawn a flying block
+def spawn_flying_block():
+    block_x = 0  # Start from the left side of the screen
+    block_y = random.randint(0, height - 15)  # Random y position
+    return pygame.Rect(block_x, block_y, 15, 15)  # Create a small square as a flying block
+
+# Function for screen shake effect
+def shake_screen(shake_duration=0.5, shake_amount=5):
+    for _ in range(int(shake_duration * 60)):  
+        offset_x = random.randint(-shake_amount, shake_amount)
+        offset_y = random.randint(-shake_amount, shake_amount)
+        screen.fill((255, 0, 0)) 
+        draw_game_elements(offset_x, offset_y) 
+        pygame.display.flip()
+        clock.tick(60)  # Maintain 60 frames per second
+
+
+def draw_game_elements(offset_x, offset_y):
+   
+    background_color = selected_light_colors[min(level - 1, len(selected_light_colors) - 1)]
+    screen.fill(background_color) 
+
+ 
+    mouse_x, mouse_y = pygame.mouse.get_pos()
+
+   
+    mouse_x = max(10, min(mouse_x + offset_x, width - 10))
+    mouse_y = max(10, min(mouse_y + offset_y, height - 10))
+
+    pygame.draw.circle(screen, black, (mouse_x, mouse_y), 10)
+
+    border_rect = pygame.Rect(5, 5, width - 10, height - 10)  
+    pygame.draw.rect(screen, black, border_rect, 5)  
+
+    
+    font = pygame.font.SysFont(None, 36)
+    level_text = font.render(f'Level: {level}', True, black)
+    lives_text = font.render(f'Lives: {lives}', True, black)
+    score_text = font.render(f'Score: {score}', True, black)
+    screen.blit(level_text, (10, 10))
+    screen.blit(lives_text, (10, 40))
+    screen.blit(score_text, (10, 70))
+
+  
+    for wall in walls:
+        wall.x -= wall_speed
+        pygame.draw.rect(screen, red, wall)
+
+    for block in flying_blocks:
+        block.x += 3  
+        pygame.draw.rect(screen, blue, block)
+
+# Main game loop
+def game_loop():
+    global walls, flying_blocks, wall_speed, wall_frequency, level, lives, score 
+    run_game = True
+    frames_since_last_wall = 0
+    last_score_time = time.time() 
+
+    level_start_time = time.time()  
+    last_flying_block_time = time.time()  
+
+    while run_game:
+      
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                run_game = False
+
+        draw_game_elements(0, 0)
+
+        # Add a new wall periodically
+        frames_since_last_wall += 1
+        if frames_since_last_wall >= wall_frequency:
+            wall_height = random.randint(50, 300)
+            walls.append(pygame.Rect(width, random.randint(0, height - wall_height), wall_width, wall_height))
+            frames_since_last_wall = 0
+
+        # Move and check collisions with walls
+        mouse_x, mouse_y = pygame.mouse.get_pos()
+        for wall in walls:
+            if wall.collidepoint(mouse_x, mouse_y):
+                lives -= 1  # Decrease lives on collision
+                walls.clear()  # Clear existing walls
+                shake_screen()  # Trigger screen shake effect
+                if lives <= 0:
+                    run_game = False  
+                break
+
+        # Check for collision with the border
+        border_rect = pygame.Rect(5, 5, width - 10, height - 10) 
+        if not border_rect.collidepoint(mouse_x, mouse_y):
+            lives -= 1  # Decrease lives if the player touches the border
+            shake_screen()  
+            if lives <= 0:
+                run_game = False  # End game if lives reach 0
+
+        # Remove walls that are off the screen
+        walls = [wall for wall in walls if wall.x > -wall_width]
+
+        # Spawn flying blocks every 5 seconds
+        current_time = time.time()
+        if current_time - last_flying_block_time >= 5:
+            flying_blocks.clear()  
+            for _ in range(6): 
+                flying_blocks.append(spawn_flying_block())
+            last_flying_block_time = current_time 
+
+        # Move and check collisions with flying blocks
+        for block in flying_blocks:
+            if block.collidepoint(mouse_x, mouse_y):
+                lives -= 1  
+                flying_blocks.remove(block)  
+                shake_screen()  
+                if lives <= 0:
+                    run_game = False  
+                break
+
+        # Remove flying blocks that are off the screen
+        flying_blocks = [block for block in flying_blocks if block.x < width]
+
+        # Update score every 0.3 seconds
+        if current_time - last_score_time >= 0.3:
+            score += 1  
+            last_score_time = current_time  
+
+        # Check for level progression based on time
+        elapsed_time = time.time() - level_start_time 
+        if elapsed_time >= 0.5: 
+            level += 1
+            wall_speed += 0.05 
+            wall_frequency = max(50, wall_frequency - 3)  
+            level_start_time = time.time()  
+
+      
+        pygame.display.flip()
+        clock.tick(160)  # Maintain 160 frames per second
+
+    pygame.quit()
+
+
+if __name__ == "__main__":
+    game_loop()
